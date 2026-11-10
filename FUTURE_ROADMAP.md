@@ -83,6 +83,7 @@ None of the above is trustworthy without this:
 - ~~Injury/exclusion support (`--exclude 1234 "John Smith"`)~~ ✅
 - ~~Log results to CSV/JSON for season-long tracking~~ ✅ (`--output`, `--log`)
 - ~~Top-N alternative lineups (re-solve with a no-good cut)~~ ✅ (`--top-n`)
+- ~~Head-coach selection: separate app section, next-opponent matchup predictor and backend round-robin quality metrics~~ — (`coaches.py`)
 - Budget sensitivity curve (FPT vs. budget, find the kinks)
 - Pin dependencies in `requirements.txt` (`pandas`, `numpy`, `scipy>=1.9`) — pulp is no longer used
 - ~~Small pytest suite for constraint logic~~ ✅

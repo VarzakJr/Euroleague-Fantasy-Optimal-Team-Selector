@@ -6,6 +6,17 @@ import pandas as pd
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "players_stats.csv")
 VALID_POSITIONS = ["Guard", "Forward", "Center"]
+COACH_POSITION = "Head Coach"
+COACH_BUCKETS = [
+    "Win 1-10",
+    "Win 11-20",
+    "Win 20",
+    "Win ot",
+    "Loss 1-10",
+    "Loss 11-20",
+    "Loss 20",
+    "Loss ot",
+]
 STALE_DAYS = 14
 
 logger = logging.getLogger(__name__)
@@ -22,13 +33,8 @@ def _warn_if_stale(filepath, stale_days):
         )
 
 
-def load_players_csv(filepath=DATA_FILE, stale_days=STALE_DAYS):
-    """
-    Loads, validates and cleans the player stats CSV.
-
-    Expected columns: ID, Name, Surname, Active, Position, Team, FPT, Quotation (+ other stats).
-    Returns a DataFrame with only active players in valid positions (coaches etc. are dropped).
-    """
+def _read_raw_csv(filepath, stale_days):
+    """Read the raw CSV, strip column names and drop fully empty rows."""
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"Could not find {filepath}")
 
@@ -36,13 +42,23 @@ def load_players_csv(filepath=DATA_FILE, stale_days=STALE_DAYS):
 
     df = pd.read_csv(filepath)
     df.columns = [str(c).strip() for c in df.columns]
+    return df.dropna(how="all")
+
+
+def load_players_csv(filepath=DATA_FILE, stale_days=STALE_DAYS):
+    """
+    Loads, validates and cleans the player stats CSV.
+
+    Expected columns: ID, Name, Surname, Active, Position, Team, FPT, Quotation (+ other stats).
+    Returns a DataFrame with only active players in valid positions (coaches etc. are dropped).
+    """
+    df = _read_raw_csv(filepath, stale_days)
 
     required_cols = ["ID", "Name", "Surname", "Active", "Position", "Team", "FPT", "Quotation"]
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
         raise ValueError(f"Missing expected columns in {filepath}: {missing}")
 
-    df = df.dropna(how="all")
     df["Position"] = df["Position"].astype(str).str.strip().str.capitalize()
 
     active_mask = pd.to_numeric(df["Active"], errors="coerce") == 1
@@ -90,6 +106,62 @@ def load_players_csv(filepath=DATA_FILE, stale_days=STALE_DAYS):
 
     return players_df[
         ["ID", "Full Name", "Position", "Team", "FPT", "Quotation", "Value per Credit"]
+    ].reset_index(drop=True)
+
+
+def load_coaches_csv(filepath=DATA_FILE, stale_days=STALE_DAYS):
+    """
+    Loads, validates and cleans the head-coach rows of the stats CSV.
+
+    Expected columns: Name, Surname, Active, Position, Team, FPT, Quotation, Plus and
+    the eight margin buckets (Win/Loss 1-10, 11-20, 20, ot).
+
+    Returns one row per active head coach with columns:
+    Full Name, Team, FPT, Quotation, Plus and the eight margin-bucket frequencies.
+    """
+    required_cols = [
+        "Name", "Surname", "Active", "Position", "Team", "FPT", "Quotation", "Plus",
+        *COACH_BUCKETS,
+    ]
+    df = _read_raw_csv(filepath, stale_days)
+
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing expected coach columns in {filepath}: {missing}")
+
+    position = df["Position"].astype(str).str.strip().str.lower()
+    active_mask = pd.to_numeric(df["Active"], errors="coerce") == 1
+    coaches = df[active_mask & (position == COACH_POSITION.lower())].copy()
+    if coaches.empty:
+        raise ValueError(f"No active head coaches found in {filepath}")
+
+    coaches["Full Name"] = (
+        coaches["Name"].astype(str).str.strip()
+        + " "
+        + coaches["Surname"].astype(str).str.strip()
+    ).str.strip()
+    coaches["Team"] = coaches["Team"].astype(str).str.strip()
+
+    numeric_cols = ["FPT", "Quotation", "Plus", *COACH_BUCKETS]
+    for col in numeric_cols:
+        coaches[col] = pd.to_numeric(coaches[col], errors="coerce")
+
+    before = len(coaches)
+    coaches = coaches.dropna(subset=numeric_cols)
+    dropped_values = before - len(coaches)
+    if dropped_values:
+        logger.warning(
+            "Dropped %d head-coach rows with invalid numeric stats or margin buckets.",
+            dropped_values,
+        )
+
+    duplicate_teams = coaches["Team"].duplicated(keep=False)
+    if duplicate_teams.any():
+        duplicates = sorted(coaches.loc[duplicate_teams, "Team"].unique())
+        raise ValueError(f"Multiple head coaches found for team(s) in {filepath}: {duplicates}")
+
+    return coaches[
+        ["Full Name", "Team", "FPT", "Quotation", "Plus", *COACH_BUCKETS]
     ].reset_index(drop=True)
 
 

@@ -44,12 +44,20 @@ Expected columns:
 ID, Name, Surname, Active, Position, Team, FPT, Quotation
 ```
 
-The loader automatically:
+Head-coach rows use the same file and add `Position = Head Coach`, the margin
+buckets (`Win 1-10`, `Win 11-20`, `Win 20`, `Win ot`, `Loss 1-10`,
+`Loss 11-20`, `Loss 20`, `Loss ot`) and `Plus`.
+
+The player loader automatically:
 
 - Keeps only `Active = 1` and `Position` in `Guard`, `Forward`, `Center`
 - Drops footer rows, coaches, and rows with a missing/invalid `ID`
 - Drops rows with invalid `FPT` or `Quotation <= 0`
 - Warns when the file is older than 14 days
+
+The coach loader keeps only `Active = 1` head coaches, builds their full names,
+and requires exactly one coach per team. Coaches are handled separately so the
+team and coach selections stay independent.
 
 ## 5. Run the web app (Streamlit)
 
@@ -59,9 +67,10 @@ The friendly, point-and-click version lives in `app.py`:
 streamlit run app.py
 ```
 
-Streamlit opens `http://localhost:8501` in your browser. From there you can set the
-budget, per-team limit, number of lineups and player exclusions, then click
-**Find Optimal Lineup**. Results can be downloaded as CSV or JSON.
+Streamlit opens `http://localhost:8501` in your browser. Use the **Section**
+switch in the sidebar to choose between the **Team optimizer** (budget, per-team
+limit, number of lineups, exclusions, downloadable results) and the **Head
+coach** matchup tools.
 
 ## 6. Run the optimizer (CLI)
 
@@ -133,7 +142,46 @@ Track results over time with a history log:
 python main.py --budget 100 --log lineup_history.csv
 ```
 
-## 7. Read the output
+## 7. Head coach selection (Streamlit)
+
+The app has a separate **Head coach** section in the sidebar. Coach credits are
+ignored for now; the goal is to pick the coach whose club has the best matchup.
+
+Coach points come from the final margin, using the official scoring table:
+
+| Result | Points |
+| --- | --- |
+| Win by 20+ | +25 |
+| Win by 11-20 | +20 |
+| Win by 1-10, or in overtime | +10 |
+| Loss by 1-10, or in overtime | -5 |
+| Loss by 11-20 | -10 |
+| Loss by 20+ | -20 |
+
+The `Win 1-10`-style columns in the CSV are per-game frequencies, not points.
+The app turns each team's margin profile into a strength rating and predicts a
+margin for the next matchup with a league-wide spread of about 10 points. It
+assumes a neutral venue.
+
+Two views are available:
+
+- **Matchup calculator** — choose your coach and the next opponent, then see
+  expected points, win probability, blowout-win probability, heavy-loss
+  probability and the full outcome breakdown.
+- **Rank coaches for an opponent** — choose the opponent and see every
+  available coach ranked by predicted points for that matchup.
+
+Overall coach quality is computed as a **round-robin against every other team**
+in `coaches.py`, but it is intentionally not shown in the Streamlit UI. You can
+access it privately from the command line:
+
+```powershell
+python coaches.py quality
+python coaches.py matchup "Zeljko Obradovic" OLY
+python coaches.py rank KBA
+```
+
+## 8. Read the output
 
 ```text
 ==================================================
@@ -152,7 +200,7 @@ Lineup value       : 1.79 FPT per credit
 - `Value per Credit` is `FPT / Quotation`.
 - The roster is always exactly **4 Guards, 4 Forwards, 2 Centers**.
 
-## 8. Run the tests
+## 9. Run the tests
 
 ```powershell
 python -m pytest -q
@@ -161,10 +209,10 @@ python -m pytest -q
 Expected result:
 
 ```text
-9 passed
+22 passed
 ```
 
-## 9. Deploy so friends can use it (Streamlit Community Cloud)
+## 10. Deploy so friends can use it (Streamlit Community Cloud)
 
 This gives your friends a public URL they can open on any device, for free.
 
@@ -223,7 +271,7 @@ Streamlit re-deploys automatically after each push.
 > - Never put API keys or passwords in the repo. Use Streamlit "Secrets" instead
 >   (`.streamlit/secrets.toml` is gitignored); this app does not need any.
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 **`Could not find players_stats.csv`**
 Make sure the CSV is in the project folder, or pass its full path with `--csv`.
